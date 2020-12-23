@@ -1,7 +1,7 @@
 const mongoose = require("mongoose");
 
 
-const moveieSchema = new mongoose.Schema({
+const movieScheme = new mongoose.Schema({
     name: {
         type: String,
         required: [true, "Name is missing in your request, please enter the name of the movie because it is requested" ],
@@ -18,4 +18,4 @@ const moveieSchema = new mongoose.Schema({
     }
 })
 
-module.exports = mongoose.model('movieDetails',moveieSchema,'movieDetails');
+module.exports = mongoose.model('movieDetails', movieScheme, 'movieDetails');
