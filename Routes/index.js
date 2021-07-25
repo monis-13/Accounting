@@ -1,6 +1,6 @@
 const express = require('express');
 const mainRouter = express.Router();
 
-mainRouter.use('/movies',require('./MovieRoutes'));
+mainRouter.use('/accounts',require('./AccounstRoute'));
 
 module.exports = mainRouter;
