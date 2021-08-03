@@ -1,5 +1,7 @@
-const balanceSheetServices = require('./BalanceSheetService');
+const balanceSheetServices = require('./ReportsServices');
+const createAccountServices = require('./CreateTTableService');
 
 module.exports = {
     ...balanceSheetServices,
+    ...createAccountServices,
 };

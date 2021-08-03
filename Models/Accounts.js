@@ -14,6 +14,14 @@ const CreateAccountModel = (accountName) => {
         debitAmount: {
             type: Number,
             required: [true, 'Debited amount must be given'],     
+        },
+        transactionId: {
+            type: String,
+            required: [true]
+        },
+        accountTitle: {
+            type: String,
+            required: [true, 'Account title is required!'],
         }
     })
     return mongoose.model(accountName, schema);
