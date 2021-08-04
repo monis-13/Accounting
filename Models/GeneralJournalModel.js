@@ -10,7 +10,7 @@ const gjSchema = mongoose.Schema({
         required: [true, 'Debit Amount is required!']
     },
     creditAmount: {
-        type: String,
+        type: Number,
         required: [true, 'Credit Amount is Required!']
     },
     accountType: {

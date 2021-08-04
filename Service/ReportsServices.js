@@ -1,166 +1,188 @@
 const mongoose = require("mongoose");
 const { CreateAccountModel } = require("../Models/Accounts");
-const { ACCOUNT_TYPES, getBalanceOfAccount } = require('../Utils/Scripts');
+const GeneralJournalModel = require("../Models/GeneralJournalModel");
+const { all } = require("../Routes");
+const {
+  ACCOUNT_TYPES,
+  getBalanceOfAccount,
+  getBalance,
+} = require("../Utils/Scripts");
 
-const balanceSheetService = async (_req, res) => {
+const generalJournalService = async (_req, res) => {
   // Accounts to add aggregate all accounts to one place
-  let summedAccounts = [];
-  
-  let accountsName = [];
-  // Promise Array to be used
-  let allAccountsPromise = [];
-  
-  // Use connection list to get all collections
-    try{
-      const collectionsNames = await mongoose.connection.db.listCollections().toArray();
-      collectionsNames.forEach(({name}) => {
-        let collection = null;
-        try{
-          accountsName.push(name);
-          collection = mongoose.model(name);
-        }
-        catch(err) {
-          accountsName.push(name);
-          collection = CreateAccountModel(name);
-        }
-        allAccountsPromise.push(collection.find({}));
-      })
+  let allEntries = [];
 
-    }
-    catch(err) {
-      console.log({err});
-      return res.status(500).send('Error occured while getting accounts from remote DB');
-    }
-  
-    try {
-      const promiseResults = await Promise.all(allAccountsPromise);
-      promiseResults.forEach((account, index) => {
-        const [ firstRecord ] = account;
-        const { accountType } = firstRecord;
-        const transformedCaseAccountType =  accountType.toUpperCase();
-        
-        // Check if account is of type asset or expense to get the sum by getting difference of credit from debit
-        
-        if(transformedCaseAccountType === ACCOUNT_TYPES.ASSETS || transformedCaseAccountType === ACCOUNT_TYPES.EXPENSE) {
-          summedAccounts.push({
-            name: accountsName[index],
-            balance: getBalanceOfAccount(account, true, false),
-          })
-        }
-        else {
-          summedAccounts.push({
-            name: accountsName[index],
-            balance: getBalanceOfAccount(account, false, true),
-          })
-        }
-      })
-      res.json({ summedAccounts });
-    } catch (err) {
-      res.json({ err });
-    }
+  // Get All Entries from GJ Table
+  try {
+    allEntries = await GeneralJournalModel.find({});
+  } catch (err) {
+    console.log({ err });
+    return res
+      .status(500)
+      .send("Error occured while getting accounts from remote DB");
+  }
+
+  try {
+    return res.json({
+      data: allEntries,
+    });
+  } catch (err) {
+    res.json({ err });
+  }
 };
 
-const generalGournalService = async (req, res) => {
-  let accounts = [];
-  let allAccountsPromise = [];
-  // Use connection list to get all collections
-    try{
-      const collectionsNames = await mongoose.connection.db.listCollections().toArray();
-      collectionsNames.forEach(({name}) => {
-        let collection = null;
-        try{
-          collection = mongoose.model(name);
-        }
-        catch(err) {
-          collection = CreateAccountModel(name);
-        }
-        allAccountsPromise.push(collection.find({}));
-      })
+const trialBalanceService = async (req, res) => {
+  let allEntries = [];
+  let creditAccounts = [];
+  let debitAccounts = [];
+  let debitAccountsSum = 0;
+  let creditAccountsSum = 0;
+  let groupedCreditAccount = {};
+  let groupedDebitAccount = {};
+  // Get All Entries from GJ Table
+  try {
+    allEntries = await GeneralJournalModel.find({});
+  } catch (err) {
+    console.log({ err });
+    return res
+      .status(500)
+      .send("Error occured while getting accounts from remote DB");
+  }
+  try {
+    creditAccounts = allEntries.filter(
+      ({ accountType }) =>
+        accountType !== ACCOUNT_TYPES.ASSETS ||
+        accountType !== ACCOUNT_TYPES.EXPENSE
+    );
+    debitAccounts = allEntries.filter(
+      ({ accountType }) =>
+        accountType == ACCOUNT_TYPES.ASSETS ||
+        accountType == ACCOUNT_TYPES.EXPENSE
+    );
+    creditAccountsSum = creditAccounts.reduce(
+      (acc, current) => acc + getBalance(current, false, true),
+      0
+    );
+    debitAccountsSum = debitAccounts.reduce(
+      (acc, current) => acc + getBalance(current, true, false),
+      0
+    );
 
-    }
-    catch(err) {
-      console.log({err});
-      return res.status(500).send('Error occured while getting accounts from remote DB');
-    }
-    try {
-      const promiseResults = await Promise.all(allAccountsPromise);
-      accounts = promiseResults.flat();
-      // Get all grouped transactions
-      const groupedAccForGJ = accounts.reduce((groupedAcc, currentAcc) => {
-        groupedAcc[currentAcc?.transactionId || "234903294023-049"] = [
-          ...(groupedAcc[currentAcc?.transactionId || "234903294023-049"] ||
-            []),
-          currentAcc,
-        ];
-        return groupedAcc;
-      }, {});
+    // callback for reduce
+    const callBackForGroupedAccounts = (acc, current) => {
+      acc[current.accountName] = [...(acc[current.accountName] || []), current];
+      return acc;
+    };
 
-      res.json({ groupedAccForGJ });
-      
-    } catch (err) {
+    // A helper method to transform accounts grouped
+    const transformGroupedAccounts = (accounts, isDebit, isCredit) => {
+      console.log(accounts);
+      Object.keys(accounts).forEach((key) => {
+        const balance = getBalanceOfAccount(accounts[key], isDebit, isCredit);
+        const accountName = accounts[key][0]["accountName"];
 
-      res.json({ err });
-      
-    }
+        accounts[key] = { accountName, balance };
+      });
+    };
+
+    groupedCreditAccount = creditAccounts.reduce(
+      callBackForGroupedAccounts,
+      {}
+    );
+    groupedDebitAccount = debitAccounts.reduce(callBackForGroupedAccounts, {});
+
+    // transforming Credit Accounts
+
+    transformGroupedAccounts(groupedCreditAccount, false, true);
+
+    // transforming Debit Accounts
+
+    transformGroupedAccounts(groupedDebitAccount, true, false);
+
+    const responsePayload = {
+      creditAccountsSum,
+      debitAccountsSum,
+      creditAccountsDetails: groupedCreditAccount,
+      debitAccountsDetails: groupedDebitAccount,
+    };
+
+    res.json(responsePayload);
+  } catch (err) {
+    console.log(err);
+    res.json({ err });
+  }
 };
 
 const financeReportsService = async (req, res) => {
-  let accounts = [];
-  let expenseAccounts = [];
-  let assetsAccounts = [];
-  // Use connection list to get all collections
-    try{
-      const collectionsNames = await mongoose.connection.db.listCollections().toArray();
-      collectionsNames.forEach(({name}) => {
-        console.log(typeof(name));
-        if(!name.toUpperCase().includes( ACCOUNT_TYPES.ASSETS || ACCOUNT_TYPES.EXPENSE )) return;
-        let collection = null;
-        try{
-          collection = mongoose.model(name);
-        }
-        catch(err) {
-          collection = CreateAccountModel(name);
-        }
-        if(!name.toUpperCase().includes( ACCOUNT_TYPES.ASSETS)) assetsAccounts.push(collection.find({}));
-        if(!name.toUpperCase().includes( ACCOUNT_TYPES.EXPENSE)) expenseAccounts.push(collection.find({}));
-      })
+  let allEntries = [];
 
-    }
-    catch(err) {
-      console.log({err});
-      return res.status(500).send('Error occured while getting accounts from remote DB');
-    }
-    try {
-      const assetsAccountsResults = await Promise.all(assetsAccounts);
-      const expenseAccountsResults = await Promise.all(expenseAccounts);
+  let revenueAccounts;
+  let expenseAccounts;
+  let expenseAccountSum = 0;
+  let revenueAccountSum = 0;
+  let netIncome = 0;
 
-      console.log({assetsAccountsResults, expenseAccountsResults});
+  // Get All Entries from GJ Table
+  try {
+    allEntries = await GeneralJournalModel.aggregate([
+      // filtering the documents # 1st stage
+      {
+        $match: { accountType: { $in: ["Revenue", "Expense"] } },
+      },
+      {
+        $group: {
+          _id: "$accountName",
+          creditSum: { $sum: "$creditAmount" },
+          debitSum: { $sum: "$debitAmount" },
+          accountName: { $last: "$accountName" },
+          accountType: { $last: "$accountType" },
+        },
+      },
+      // TODO --> Need to verify how to grouped and then project or map
+    ]);
+  } catch (err) {
+    console.log({ err });
+    return res
+      .status(500)
+      .send("Error occured while getting accounts from remote DB");
+  }
+  try {
+    // get accounts with thier balance
+    console.log(allEntries);
+    revenueAccounts = allEntries.filter(({ accountType }) => accountType === ACCOUNT_TYPES.REVENUE)
+      .map((account) => ({
+        ...account,
+        balance: account.creditSum - account.debitSum,
+      }));
+    expenseAccounts = allEntries
+      .filter(({ accountType }) => accountType === ACCOUNT_TYPES.EXPENSE)
+      .map((account) => ({
+        ...account,
+        balance: account.debitSum - account.creditSum,
+      }));
 
-      const callBackForAssetSum = (assetAccountsSum, currentAssetAccount) => assetAccountsSum + getBalanceOfAccount(currentAssetAccount, true, false);
-      const callBackForExpenseSum = (expenseAccoutSum, currentExpenseAccount) => expenseAccoutSum + getBalanceOfAccount(currentExpenseAccount, true, false);
+    expenseAccountSum = expenseAccounts.reduce((acc, { balance }) => (acc + balance), 0);  
+    revenueAccountSum = revenueAccounts.reduce((acc, { balance }) => (acc + balance), 0);
+    netIncome = expenseAccountSum - revenueAccountSum; 
 
-      const assetsAccountSum = assetsAccountsResults.reduce(callBackForAssetSum, 0);
-      const expenseAccountSum = expenseAccountsResults.reduce(callBackForExpenseSum, 0);
+    const payload = {
+      expenseAccountSum,
+      expenseAccounts,
+      netIncome,
+      revenueAccountSum,
+      revenueAccounts
+    };
 
-      console.log({
-        assetsAccountSum,
-        expenseAccountSum
-      });
+    res.json(payload);
+  } catch (err) {
+    console.log({ err });
 
-
-      res.json({  });
-      
-    } catch (err) {
-
-      console.log({err});
-
-      res.json({ err });
-      
-    }
+    res.json({ err });
+  }
 };
 
 module.exports = {
-  balanceSheetService,
-  generalGournalService,
+  generalJournalService,
+  trialBalanceService,
   financeReportsService,
 };

@@ -1,12 +1,12 @@
 const express = require("express");
 
 const GeneralJournalRoute = express.Router();
-const { generalGournalService } = require('../Service');
+const { trialBalanceService } = require('../Service');
 
-GeneralJournalRoute.route('/report')
+GeneralJournalRoute.route('/trial-balance')
 .get(async (req, res) => {
     try{
-        await generalGournalService(req,res);
+        await trialBalanceService(req,res);
     }
     catch(Err) {
         res.json({Err});

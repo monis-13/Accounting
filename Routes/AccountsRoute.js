@@ -1,12 +1,12 @@
 const express = require("express");
 
 const AccountsRoute = express.Router();
-const { balanceSheetService, createAccount } = require("../Service");
+const { generalJournalService, createAccount } = require("../Service");
 
-AccountsRoute.route("/gg-balance-sheet")
+AccountsRoute.route("/general-entries")
   .get(async (req, res) => {
     try {
-      await balanceSheetService(req, res);
+      await generalJournalService(req, res);
     } catch (err) {
       res.json({ err });
     }
