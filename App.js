@@ -45,6 +45,10 @@ const router = require('./Routes');
 
 app.use(router);
 
+app.get('/', (req, res) => {
+    res.send('This is a node js App');
+})
+
 app.listen(PORT, () => {
     console.log(`Server Started At Port ${PORT}`.green.bold);
 });
